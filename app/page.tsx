@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { asianQuestions, coffeeQuestions, lemonadeQuestions, russianQuestions } from './question-banks';
 
 type Question = { id: number; text: string; options: string[]; correct: number; note: string };
 type Category = { id: string; title: string; subtitle: string; icon: string; color: string; questions?: Question[]; passScore?: number };
@@ -127,10 +128,10 @@ const categories: Category[] = [
   { id: 'burgers', title: 'Бургеры', subtitle: '26 вопросов · сборка, веса ингредиентов и отдача', icon: '▤', color: 'red', questions: burgerQuestions, passScore: 21 },
   { id: 'pizza', title: 'Пицца', subtitle: '26 вопросов · слои, веса и работа с печью', icon: '◒', color: 'yellow', questions: pizzaQuestions, passScore: 21 },
   { id: 'shawarma', title: 'Шаурма', subtitle: '26 вопросов · сборка, граммовки и упаковка', icon: '≋', color: 'green', questions: shawarmaQuestions, passScore: 21 },
-  { id: 'coffee', title: 'Кофе', subtitle: 'Напитки с сиропами и без', icon: '◉', color: 'coffee' },
-  { id: 'lemonades', title: 'Лимонады', subtitle: 'Основа, лёд, вода и подача', icon: '✦', color: 'blue' },
-  { id: 'asian', title: 'Азиатская линейка', subtitle: 'Сезонное меню: фритюр, бургеры, напитки', icon: '◈', color: 'purple' },
-  { id: 'russian', title: 'Русская кухня', subtitle: 'Сезонное меню: бургер, драники, лимонад', icon: '✳', color: 'rose' },
+  { id: 'coffee', title: 'Кофе', subtitle: '16 вопросов · горячие и холодные напитки, сиропы и подача', icon: '◉', color: 'coffee', questions: coffeeQuestions, passScore: 13 },
+  { id: 'lemonades', title: 'Лимонады', subtitle: '16 вопросов · основы, лёд, вода и подача', icon: '✦', color: 'blue', questions: lemonadeQuestions, passScore: 13 },
+  { id: 'asian', title: 'Азиатская линейка', subtitle: '26 вопросов · бургеры, фритюр, рамен и крылья', icon: '◈', color: 'purple', questions: asianQuestions, passScore: 21 },
+  { id: 'russian', title: 'Русская кухня', subtitle: '16 вопросов · бургер, драники и лимонад', icon: '✳', color: 'rose', questions: russianQuestions, passScore: 13 },
 ];
 
 const passScore = 21;
@@ -189,7 +190,7 @@ export default function Home() {
       <form className="identity-card" onSubmit={(event) => { event.preventDefault(); begin(); }}><span className="step-label">01 / НАЧАТЬ</span><h2>Кто проходит тест?</h2><p>Укажите имя — оно попадёт в журнал результатов.</p><label htmlFor="employee">ФИО сотрудника</label><input id="employee" value={employee} onChange={(event) => setEmployee(event.target.value)} placeholder="Например, Анна Соколова" autoComplete="name" /><div className="autodate"><span>Дата прохождения</span><b>{today}</b></div><button className="primary-button" type="submit" disabled={!employee.trim()}>Выбрать категорию <span>→</span></button><small className="privacy-note">Результат будет сохранён в журнале обучения.</small></form>
     </section>}
 
-    {screen === 'categories' && <section className="category-view"><div className="section-heading"><div><p className="eyebrow">02 / НАПРАВЛЕНИЕ</p><h1>Что повторяем сегодня?</h1></div><p>Доступны тесты, основанные на утверждённых новых стандартах.</p></div><div className="category-grid">{categories.map((category) => <article className={`category-card ${category.color} ${category.questions ? 'ready' : 'soon'}`} key={category.id}><div className="category-icon" aria-hidden="true">{category.icon}</div><div className="category-info"><span>{category.questions ? 'ГОТОВО' : 'СКОРО'}</span><h2>{category.title}</h2><p>{category.subtitle}</p></div><button onClick={() => openCategory(category)} disabled={!category.questions}>{category.questions ? 'Начать тест' : 'В подготовке'} <b>→</b></button></article>)}</div><p className="category-footnote">Фритюр, бургеры, пицца и шаурма: по 26 вопросов, проходной результат 21/26.</p></section>}
+    {screen === 'categories' && <section className="category-view"><div className="section-heading"><div><p className="eyebrow">02 / НАПРАВЛЕНИЕ</p><h1>Что повторяем сегодня?</h1></div><p>Все тесты основаны на утверждённых новых стандартах.</p></div><div className="category-grid">{categories.map((category) => <article className={`category-card ${category.color} ${category.questions ? 'ready' : 'soon'}`} key={category.id}><div className="category-icon" aria-hidden="true">{category.icon}</div><div className="category-info"><span>{category.questions ? 'ГОТОВО' : 'СКОРО'}</span><h2>{category.title}</h2><p>{category.subtitle}</p></div><button onClick={() => openCategory(category)} disabled={!category.questions}>{category.questions ? 'Начать тест' : 'В подготовке'} <b>→</b></button></article>)}</div><p className="category-footnote">Фритюр, бургеры, пицца, шаурма и азиатская линейка: зачёт от 21/26. Кофе, лимонады и русская кухня: зачёт от 13/16.</p></section>}
 
     {screen === 'dashboard' && <section className="dashboard-view"><div className="dashboard-top"><div><button className="back-button" onClick={() => setScreen('categories')}>← К категориям</button><p className="eyebrow">ЖУРНАЛ РУКОВОДИТЕЛЯ</p><h1>Результаты обучения</h1></div><button className="secondary-button" onClick={() => void loadJournal()}>{journalLoading ? 'Обновляем…' : 'Обновить'}</button></div><div className="stat-grid"><article><span>Всего попыток</span><b>{attempts.length}</b></article><article><span>Прошли с зачётом</span><b>{passRate}%</b></article><article><span>Средний результат</span><b>{averageScore}%</b></article></div><div className="attempt-table"><div className="attempt-table-head"><span>Сотрудник</span><span>Категория</span><span>Дата</span><span>Результат</span><span>Статус</span></div>{attempts.length === 0 ? <p className="empty-attempts">Пока нет попыток. Здесь появятся результаты после первого прохождения теста.</p> : attempts.map((attempt) => <div className="attempt-row" key={attempt.id}><b>{attempt.employeeName}</b><span>{attempt.categoryTitle}</span><span>{new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(attempt.completedAt))}</span><strong>{attempt.score} / {attempt.total}</strong><i className={attempt.passed ? 'status-pass' : 'status-repeat'}>{attempt.passed ? 'Зачёт' : 'Повторить'}</i></div>)}</div></section>}
 

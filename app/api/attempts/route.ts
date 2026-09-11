@@ -62,7 +62,7 @@ export async function POST(request: Request) {
 
   await ensureSchema();
   const completedAt = new Date().toISOString();
-  const passingScores: Record<string, number> = { fryer: 21, burgers: 21, pizza: 21, shawarma: 21 };
+  const passingScores: Record<string, number> = { fryer: 21, burgers: 21, pizza: 21, shawarma: 21, coffee: 13, lemonades: 13, asian: 21, russian: 13 };
   const passed = Number(score >= (passingScores[categoryId] ?? total + 1));
   const saved = await env.DB.prepare(`INSERT INTO attempts
     (employee_name, category_id, category_title, score, total, passed, completed_at)
