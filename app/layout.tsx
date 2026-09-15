@@ -16,6 +16,10 @@ export const metadata: Metadata = {
     description: 'Тесты, разбор ошибок и контроль результатов команды.',
     images: ['/og.png'],
   },
+  icons: {
+    icon: '/favicon.svg',
+    shortcut: '/favicon.svg',
+  },
 };
 
 export default function RootLayout({
