@@ -1,5 +1,5 @@
-type VisualCheck = { label: string; title: string; fields: { label: string; value: string }[]; helper?: string };
-type Question = { id: number; text: string; options: string[]; correct: number; note: string; image?: string; imageAlt?: string; visualCheck?: VisualCheck };
+export type VisualCheck = { label: string; title: string; fields: { label: string; value: string }[]; helper?: string };
+export type Question = { id: number; text: string; options: string[]; correct: number; note: string; image?: string; imageAlt?: string; visualCheck?: VisualCheck };
 
 export const coffeeQuestions: Question[] = [
   { id: 1, text: 'Какой объём стакана используют для холодных кофейных напитков?', options: ['300 мл', '350 мл', '375 мл', '400 мл'], correct: 2, note: 'Для холодных кофейных напитков используют пластиковый стакан 375 мл.' },
