@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { isManagerSession } from '../manager-auth';
+import { ensureSchema } from '../db';
 
 type AttemptRow = {
   id: number;
@@ -11,23 +12,6 @@ type AttemptRow = {
   passed: number;
   completed_at: string;
 };
-
-async function ensureSchema() {
-  await env.DB.batch([
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS attempts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      employee_name TEXT NOT NULL,
-      category_id TEXT NOT NULL,
-      category_title TEXT NOT NULL,
-      score INTEGER NOT NULL,
-      total INTEGER NOT NULL,
-      passed INTEGER NOT NULL,
-      completed_at TEXT NOT NULL
-    )`),
-    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_attempts_completed_at ON attempts (completed_at DESC)'),
-    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_attempts_employee_name ON attempts (employee_name, completed_at DESC)'),
-  ]);
-}
 
 function toAttempt(row: AttemptRow) {
   return {
@@ -48,7 +32,7 @@ export async function GET(request: Request) {
   const employeeName = new URL(request.url).searchParams.get('employeeName')?.trim().slice(0, 120) ?? '';
   if (!manager && !employeeName) return Response.json({ error: 'Требуется вход руководителя.' }, { status: 401 });
   const query = `SELECT id, employee_name, category_id, category_title, score, total, passed, completed_at
-    FROM attempts ${manager ? '' : 'WHERE employee_name = ?'} ORDER BY completed_at DESC LIMIT 100`;
+    FROM attempts ${manager ? '' : 'WHERE employee_name = ?'} ORDER BY completed_at DESC LIMIT ${manager ? '1000' : '100'}`;
   const statement = env.DB.prepare(query);
   const result = manager ? await statement.all<AttemptRow>() : await statement.bind(employeeName).all<AttemptRow>();
   return Response.json({ attempts: result.results.map(toAttempt) });

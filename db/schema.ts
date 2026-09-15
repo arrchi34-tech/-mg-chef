@@ -17,3 +17,14 @@ export const attempts = sqliteTable(
     index('idx_attempts_employee_name').on(table.employeeName, table.completedAt),
   ],
 );
+
+export const teamMembers = sqliteTable(
+  'team_members',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    name: text('name').notNull().unique(),
+    active: integer('active').notNull().default(1),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [index('idx_team_members_active_name').on(table.active, table.name)],
+);

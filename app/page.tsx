@@ -6,6 +6,9 @@ import { asianQuestions, coffeeQuestions, lemonadeQuestions, russianQuestions } 
 type Question = { id: number; text: string; options: string[]; correct: number; note: string };
 type Category = { id: string; title: string; subtitle: string; icon: string; color: string; questions?: Question[]; passScore?: number };
 type Attempt = { id: number; employeeName: string; categoryId: string; categoryTitle: string; score: number; total: number; passed: boolean; completedAt: string };
+type TeamMember = { id: number; name: string; createdAt: string };
+type ManagerTab = 'summary' | 'attempts' | 'team';
+type ProgressStatus = 'passed' | 'failed' | 'missing';
 
 const fryerQuestions: Question[] = [
   { id: 1, text: 'Какая рабочая температура фритюра установлена для новых стандартов?', options: ['175°C ± 5°C', '180°C ± 5°C', '185°C', '190°C ± 5°C'], correct: 1, note: 'Для всех новых стандартов фритюра рабочая температура — 180°C ± 5°C.' },
@@ -149,6 +152,15 @@ export default function Home() {
   const [managerAuthenticated, setManagerAuthenticated] = useState(false);
   const [managerPassword, setManagerPassword] = useState('');
   const [managerLoginState, setManagerLoginState] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [managerTab, setManagerTab] = useState<ManagerTab>('summary');
+  const [selectedEmployee, setSelectedEmployee] = useState<string | null>(null);
+  const [employeeFilter, setEmployeeFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | ProgressStatus>('all');
+  const [dateFilter, setDateFilter] = useState('');
+  const [teamDraft, setTeamDraft] = useState('');
+  const [teamActionState, setTeamActionState] = useState<'idle' | 'saving' | 'error'>('idle');
   const today = useMemo(() => new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date()), []);
   const questions = activeCategory?.questions ?? [];
   const score = answers.reduce((sum, answer, index) => sum + Number(answer === questions[index]?.correct), 0);
@@ -173,11 +185,12 @@ export default function Home() {
     if (!authorized) { setScreen('managerLogin'); return; }
     setJournalLoading(true);
     try {
-      const response = await fetch('/api/attempts');
-      if (response.status === 401) { setManagerAuthenticated(false); setScreen('managerLogin'); return; }
-      if (!response.ok) throw new Error('load failed');
-      const data = await response.json() as { attempts: Attempt[] };
-      setAttempts(data.attempts);
+      const [attemptResponse, teamResponse] = await Promise.all([fetch('/api/attempts'), fetch('/api/team')]);
+      if (attemptResponse.status === 401 || teamResponse.status === 401) { setManagerAuthenticated(false); setScreen('managerLogin'); return; }
+      if (!attemptResponse.ok || !teamResponse.ok) throw new Error('load failed');
+      const [attemptData, teamData] = await Promise.all([attemptResponse.json() as Promise<{ attempts: Attempt[] }>, teamResponse.json() as Promise<{ members: TeamMember[] }>]);
+      setAttempts(attemptData.attempts);
+      setTeamMembers(teamData.members);
     } finally { setJournalLoading(false); setScreen('dashboard'); }
   };
   const loadMyResults = async () => {
@@ -208,12 +221,73 @@ export default function Home() {
     await fetch('/api/manager/logout', { method: 'POST' }).catch(() => undefined);
     setManagerAuthenticated(false);
     setAttempts([]);
+    setTeamMembers([]);
+    setSelectedEmployee(null);
     setScreen(employee.trim() ? 'categories' : 'welcome');
+  };
+  const saveTeamMembers = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const names = teamDraft.split(/[\n,;]+/).map((name) => name.trim()).filter(Boolean);
+    if (!names.length) return;
+    setTeamActionState('saving');
+    try {
+      const response = await fetch('/api/team', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ names }) });
+      if (!response.ok) throw new Error('team save failed');
+      const data = await response.json() as { members: TeamMember[] };
+      setTeamMembers(data.members);
+      setTeamDraft('');
+      setTeamActionState('idle');
+    } catch { setTeamActionState('error'); }
+  };
+  const removeTeamMember = async (member: TeamMember) => {
+    if (!window.confirm(`Убрать ${member.name} из активного списка? История попыток сохранится.`)) return;
+    const response = await fetch(`/api/team?id=${member.id}`, { method: 'DELETE' });
+    if (!response.ok) return;
+    setTeamMembers((current) => current.filter((item) => item.id !== member.id));
+    if (selectedEmployee === member.name) setSelectedEmployee(null);
   };
   const nextQuestion = () => { if (selected === null) return; const nextAnswers = [...answers, selected]; if (questionIndex + 1 === questions.length) { setAnswers(nextAnswers); setScreen('result'); void recordAttempt(nextAnswers); return; } setAnswers(nextAnswers); setQuestionIndex((index) => index + 1); setSelected(null); };
   const retry = () => { setQuestionIndex(0); setAnswers([]); setSelected(null); setScreen('quiz'); };
   const passRate = attempts.length ? Math.round((attempts.filter((attempt) => attempt.passed).length / attempts.length) * 100) : 0;
   const averageScore = attempts.length ? Math.round((attempts.reduce((sum, attempt) => sum + (attempt.score / attempt.total) * 100, 0) / attempts.length)) : 0;
+  const normalizeName = (name: string) => name.trim().replace(/\s+/g, ' ').toLocaleLowerCase('ru-RU');
+  const attemptKey = (employeeName: string, categoryId: string) => `${normalizeName(employeeName)}::${categoryId}`;
+  const latestByEmployeeCategory = useMemo(() => {
+    const latest = new Map<string, Attempt>();
+    for (const attempt of attempts) { const key = attemptKey(attempt.employeeName, attempt.categoryId); if (!latest.has(key)) latest.set(key, attempt); }
+    return latest;
+  }, [attempts]);
+  const currentStatus = (memberName: string, categoryId: string): ProgressStatus => {
+    const attempt = latestByEmployeeCategory.get(attemptKey(memberName, categoryId));
+    return !attempt ? 'missing' : attempt.passed ? 'passed' : 'failed';
+  };
+  const shownCategories = categoryFilter === 'all' ? categories : categories.filter((category) => category.id === categoryFilter);
+  const filteredTeam = teamMembers.filter((member) => {
+    if (employeeFilter && !normalizeName(member.name).includes(normalizeName(employeeFilter))) return false;
+    return statusFilter === 'all' || shownCategories.some((category) => currentStatus(member.name, category.id) === statusFilter);
+  });
+  const filteredAttempts = attempts.filter((attempt) => {
+    if (employeeFilter && !normalizeName(attempt.employeeName).includes(normalizeName(employeeFilter))) return false;
+    if (categoryFilter !== 'all' && attempt.categoryId !== categoryFilter) return false;
+    if (statusFilter === 'passed' && !attempt.passed) return false;
+    if (statusFilter === 'failed' && attempt.passed) return false;
+    if (statusFilter === 'missing') return false;
+    return !dateFilter || attempt.completedAt.slice(0, 10) === dateFilter;
+  });
+  const allTeamStatuses = teamMembers.flatMap((member) => categories.map((category) => currentStatus(member.name, category.id)));
+  const passedCategories = allTeamStatuses.filter((status) => status === 'passed').length;
+  const employeesToRepeat = teamMembers.filter((member) => categories.some((category) => currentStatus(member.name, category.id) === 'failed')).length;
+  const employeesNotStarted = teamMembers.filter((member) => categories.every((category) => currentStatus(member.name, category.id) === 'missing')).length;
+  const selectedEmployeeAttempts = selectedEmployee ? attempts.filter((attempt) => normalizeName(attempt.employeeName) === normalizeName(selectedEmployee)) : [];
+  const selectedEmployeeBest = selectedEmployeeAttempts.reduce<Attempt | null>((best, attempt) => !best || attempt.score / attempt.total > best.score / best.total ? attempt : best, null);
+  const exportAttempts = () => {
+    const quote = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
+    const rows = [['Сотрудник', 'Категория', 'Дата и время', 'Результат', 'Статус'], ...filteredAttempts.map((attempt) => [attempt.employeeName, attempt.categoryTitle, new Date(attempt.completedAt).toLocaleString('ru-RU'), `${attempt.score} / ${attempt.total}`, attempt.passed ? 'Зачёт' : 'Повторить'])];
+    const file = new Blob([`\ufeff${rows.map((row) => row.map(quote).join(';')).join('\n')}`], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(file);
+    const link = document.createElement('a');
+    link.href = url; link.download = `результаты-обучения-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url);
+  };
 
   return <main className="trainer-shell">
     <header className="topbar">
@@ -230,7 +304,7 @@ export default function Home() {
 
     {screen === 'managerLogin' && <section className="manager-login"><form className="identity-card manager-card" onSubmit={(event) => void signInManager(event)}><button className="back-button" type="button" onClick={() => setScreen(employee.trim() ? 'categories' : 'welcome')}>← Назад</button><p className="eyebrow">ДОСТУП РУКОВОДИТЕЛЯ</p><h1>Журнал команды</h1><p>Введите пароль руководителя. Только после входа доступны результаты всех сотрудников и общая статистика.</p><label htmlFor="manager-password">Пароль руководителя</label><input id="manager-password" type="password" value={managerPassword} onChange={(event) => { setManagerPassword(event.target.value); setManagerLoginState('idle'); }} autoComplete="current-password" placeholder="Введите пароль" /><button className="primary-button" type="submit" disabled={!managerPassword || managerLoginState === 'loading'}>{managerLoginState === 'loading' ? 'Проверяем…' : 'Открыть журнал'} <span>→</span></button>{managerLoginState === 'error' && <small className="login-error">Пароль не подошёл. Проверьте и попробуйте снова.</small>}<small className="privacy-note">Сотрудники через этот сайт видят только собственные попытки.</small></form></section>}
 
-    {screen === 'dashboard' && <section className="dashboard-view"><div className="dashboard-top"><div><button className="back-button" onClick={() => setScreen('categories')}>← К категориям</button><p className="eyebrow">ЖУРНАЛ РУКОВОДИТЕЛЯ</p><h1>Результаты обучения</h1></div><div className="dashboard-actions"><button className="secondary-button" onClick={() => void loadJournal()}>{journalLoading ? 'Обновляем…' : 'Обновить'}</button><button className="logout-button" onClick={() => void signOutManager()}>Выйти</button></div></div><div className="stat-grid"><article><span>Всего попыток</span><b>{attempts.length}</b></article><article><span>Прошли с зачётом</span><b>{passRate}%</b></article><article><span>Средний результат</span><b>{averageScore}%</b></article></div><div className="attempt-table"><div className="attempt-table-head"><span>Сотрудник</span><span>Категория</span><span>Дата</span><span>Результат</span><span>Статус</span></div>{attempts.length === 0 ? <p className="empty-attempts">Пока нет попыток. Здесь появятся результаты после первого прохождения теста.</p> : attempts.map((attempt) => <div className="attempt-row" key={attempt.id}><b>{attempt.employeeName}</b><span>{attempt.categoryTitle}</span><span>{new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(attempt.completedAt))}</span><strong>{attempt.score} / {attempt.total}</strong><i className={attempt.passed ? 'status-pass' : 'status-repeat'}>{attempt.passed ? 'Зачёт' : 'Повторить'}</i></div>)}</div></section>}
+    {screen === 'dashboard' && <section className="dashboard-view manager-dashboard"><div className="dashboard-top"><div><button className="back-button" onClick={() => setScreen('categories')}>← К категориям</button><p className="eyebrow">ПАНЕЛЬ РУКОВОДИТЕЛЯ</p><h1>Контроль обучения</h1></div><div className="dashboard-actions"><button className="secondary-button" onClick={() => void loadJournal()}>{journalLoading ? 'Обновляем…' : 'Обновить'}</button><button className="logout-button" onClick={() => void signOutManager()}>Выйти</button></div></div><div className="manager-stat-grid"><article><span>В команде</span><b>{teamMembers.length}</b><small>сотрудников в реестре</small></article><article><span>Категории сданы</span><b>{passedCategories} <em>/ {teamMembers.length * categories.length}</em></b><small>по последней попытке</small></article><article><span>Нужна пересдача</span><b>{employeesToRepeat}</b><small>сотрудников с ошибкой</small></article><article><span>Ещё не сдавали</span><b>{employeesNotStarted}</b><small>ни одной категории</small></article><article><span>Средний балл</span><b>{averageScore}%</b><small>по всем попыткам</small></article></div><div className="manager-tabs" role="tablist"><button className={managerTab === 'summary' ? 'active' : ''} onClick={() => setManagerTab('summary')}>Сводка команды</button><button className={managerTab === 'attempts' ? 'active' : ''} onClick={() => setManagerTab('attempts')}>Журнал попыток</button><button className={managerTab === 'team' ? 'active' : ''} onClick={() => setManagerTab('team')}>Сотрудники</button></div>{managerTab !== 'team' && <div className="manager-filters"><label><span>Сотрудник</span><input value={employeeFilter} onChange={(event) => setEmployeeFilter(event.target.value)} placeholder="Поиск по ФИО" /></label><label><span>Категория</span><select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="all">Все категории</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.title}</option>)}</select></label><label><span>Статус</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | ProgressStatus)}><option value="all">Все статусы</option><option value="passed">Сдано</option><option value="failed">Нужна пересдача</option>{managerTab === 'summary' && <option value="missing">Не сдавали</option>}</select></label>{managerTab === 'attempts' && <label><span>Дата попытки</span><input type="date" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} /></label>}</div>}{managerTab === 'summary' && <><div className="manager-section-heading"><div><h2>Матрица прохождения</h2><p>Нажмите на сотрудника или результат, чтобы открыть его карточку.</p></div><span>{filteredTeam.length} из {teamMembers.length}</span></div>{teamMembers.length === 0 ? <div className="manager-empty"><b>Сначала добавьте команду</b><p>Перейдите во вкладку «Сотрудники» и вставьте список ФИО — тогда появятся статусы «не сдавали» и «нужна пересдача».</p><button className="secondary-button" onClick={() => setManagerTab('team')}>Добавить сотрудников</button></div> : <div className="matrix-table"><div className="matrix-row matrix-head" style={{ gridTemplateColumns: `minmax(190px, 1.5fr) repeat(${shownCategories.length}, minmax(112px, 1fr))` }}><span>Сотрудник</span>{shownCategories.map((category) => <span key={category.id}>{category.title}</span>)}</div>{filteredTeam.length === 0 ? <p className="empty-attempts">По текущему фильтру сотрудников не найдено.</p> : filteredTeam.map((member) => <div className="matrix-row" key={member.id} style={{ gridTemplateColumns: `minmax(190px, 1.5fr) repeat(${shownCategories.length}, minmax(112px, 1fr))` }}><button className="member-name" onClick={() => setSelectedEmployee(member.name)}>{member.name}</button>{shownCategories.map((category) => { const attempt = latestByEmployeeCategory.get(attemptKey(member.name, category.id)); const status = currentStatus(member.name, category.id); return <button className={`matrix-cell ${status}`} key={category.id} onClick={() => setSelectedEmployee(member.name)}><b>{attempt ? `${attempt.score} / ${attempt.total}` : '—'}</b><small>{status === 'passed' ? 'Зачёт' : status === 'failed' ? 'Повторить' : 'Не сдавал'}</small></button>; })}</div>)}</div>}{selectedEmployee && <section className="employee-detail"><div className="employee-detail-top"><div><p className="eyebrow">КАРТОЧКА СОТРУДНИКА</p><h2>{selectedEmployee}</h2></div><button className="close-detail" onClick={() => setSelectedEmployee(null)}>Закрыть ×</button></div><div className="detail-summary"><article><span>Всего попыток</span><b>{selectedEmployeeAttempts.length}</b></article><article><span>Последний результат</span><b>{selectedEmployeeAttempts[0] ? `${selectedEmployeeAttempts[0].score} / ${selectedEmployeeAttempts[0].total}` : '—'}</b></article><article><span>Лучший результат</span><b>{selectedEmployeeBest ? `${selectedEmployeeBest.score} / ${selectedEmployeeBest.total}` : '—'}</b></article></div><div className="detail-status-grid">{categories.map((category) => { const attempt = latestByEmployeeCategory.get(attemptKey(selectedEmployee, category.id)); const status = currentStatus(selectedEmployee, category.id); return <button key={category.id} className={`detail-status ${status}`} onClick={() => setCategoryFilter(category.id)}><span>{category.title}</span><b>{attempt ? `${attempt.score} / ${attempt.total}` : 'Не сдавал'}</b><small>{status === 'passed' ? 'Зачёт' : status === 'failed' ? 'Нужна пересдача' : 'Нет попытки'}</small></button>; })}</div><div className="detail-attempts"><h3>Все попытки</h3>{selectedEmployeeAttempts.length === 0 ? <p>Сотрудник ещё не проходил тесты.</p> : selectedEmployeeAttempts.map((attempt) => <div key={attempt.id}><span>{attempt.categoryTitle}</span><span>{new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(attempt.completedAt))}</span><b>{attempt.score} / {attempt.total}</b><i className={attempt.passed ? 'status-pass' : 'status-repeat'}>{attempt.passed ? 'Зачёт' : 'Повторить'}</i></div>)}</div></section>}</>}{managerTab === 'attempts' && <><div className="manager-section-heading"><div><h2>Журнал попыток</h2><p>Показывает каждую сдачу; выгрузка учитывает текущие фильтры.</p></div><button className="secondary-button" onClick={exportAttempts}>Скачать CSV</button></div><div className="attempt-table"><div className="attempt-table-head"><span>Сотрудник</span><span>Категория</span><span>Дата</span><span>Результат</span><span>Статус</span></div>{filteredAttempts.length === 0 ? <p className="empty-attempts">Попыток по этому фильтру пока нет.</p> : filteredAttempts.map((attempt) => <div className="attempt-row" key={attempt.id}><button className="attempt-member" onClick={() => { setSelectedEmployee(attempt.employeeName); setManagerTab('summary'); }}>{attempt.employeeName}</button><span>{attempt.categoryTitle}</span><span>{new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(attempt.completedAt))}</span><strong>{attempt.score} / {attempt.total}</strong><i className={attempt.passed ? 'status-pass' : 'status-repeat'}>{attempt.passed ? 'Зачёт' : 'Повторить'}</i></div>)}</div></>}{managerTab === 'team' && <><div className="manager-section-heading"><div><h2>Реестр команды</h2><p>Добавьте сотрудников один раз — сводка сразу покажет, кто не начал или кому нужна пересдача.</p></div><span>{teamMembers.length} сотрудников</span></div><form className="team-import" onSubmit={(event) => void saveTeamMembers(event)}><label htmlFor="team-members">Список ФИО</label><textarea id="team-members" value={teamDraft} onChange={(event) => { setTeamDraft(event.target.value); setTeamActionState('idle'); }} placeholder={'Одно ФИО на строку\nАнна Соколова\nИван Петров'} /><div><small>Можно вставить до 100 имён за раз: по одному в строке, через запятую или точку с запятой.</small><button className="primary-button" type="submit" disabled={!teamDraft.trim() || teamActionState === 'saving'}>{teamActionState === 'saving' ? 'Сохраняем…' : 'Добавить в реестр'} <span>→</span></button></div>{teamActionState === 'error' && <p className="team-error">Не удалось сохранить список. Попробуйте ещё раз.</p>}</form><div className="team-list">{teamMembers.length === 0 ? <p className="empty-attempts">Реестр пока пуст.</p> : teamMembers.map((member) => <div key={member.id}><b>{member.name}</b><button onClick={() => void removeTeamMember(member)} aria-label={`Убрать ${member.name} из списка`}>Убрать</button></div>)}</div></>}</section>}
 
     {screen === 'myResults' && <section className="dashboard-view"><div className="dashboard-top"><div><button className="back-button" onClick={() => setScreen('categories')}>← К категориям</button><p className="eyebrow">ЛИЧНЫЙ РЕЗУЛЬТАТ</p><h1>Мои попытки</h1></div><button className="secondary-button" onClick={() => void loadMyResults()}>{journalLoading ? 'Обновляем…' : 'Обновить'}</button></div><div className="stat-grid"><article><span>Всего попыток</span><b>{attempts.length}</b></article><article><span>Зачётов</span><b>{attempts.filter((attempt) => attempt.passed).length}</b></article><article><span>Средний результат</span><b>{averageScore}%</b></article></div><div className="attempt-table"><div className="attempt-table-head personal-attempt-head"><span>Категория</span><span>Дата</span><span>Результат</span><span>Статус</span></div>{attempts.length === 0 ? <p className="empty-attempts">У вас пока нет сохранённых попыток.</p> : attempts.map((attempt) => <div className="attempt-row personal-attempt-row" key={attempt.id}><b>{attempt.categoryTitle}</b><span>{new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(attempt.completedAt))}</span><strong>{attempt.score} / {attempt.total}</strong><i className={attempt.passed ? 'status-pass' : 'status-repeat'}>{attempt.passed ? 'Зачёт' : 'Повторить'}</i></div>)}</div></section>}
 
