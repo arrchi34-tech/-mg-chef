@@ -3,11 +3,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { asianQuestions, coffeeQuestions, lemonadeQuestions, russianQuestions } from './question-banks';
 
-type Question = { id: number; text: string; options: string[]; correct: number; note: string };
+type Question = { id: number; text: string; options: string[]; correct: number; note: string; image?: string; imageAlt?: string };
 type Category = { id: string; title: string; subtitle: string; icon: string; color: string; questions?: Question[]; passScore?: number };
-type Attempt = { id: number; employeeName: string; categoryId: string; categoryTitle: string; score: number; total: number; passed: boolean; completedAt: string };
-type TeamMember = { id: number; name: string; createdAt: string };
-type ManagerTab = 'summary' | 'attempts' | 'team';
+type Attempt = { id: number; employeeName: string; categoryId: string; categoryTitle: string; score: number; total: number; passed: boolean; completedAt: string; answers: number[] | null };
+type TeamMember = { id: number; name: string; pinConfigured: boolean; createdAt: string };
+type StaffMember = { id: number; name: string };
+type IssuedPin = { id: number; name: string; pin: string };
+type ManagerTab = 'summary' | 'attempts' | 'team' | 'deadlines';
 type ProgressStatus = 'passed' | 'failed' | 'missing';
 
 const fryerQuestions: Question[] = [
@@ -36,7 +38,7 @@ const fryerQuestions: Question[] = [
   { id: 23, text: 'Какой стандарт у митболлов?', options: ['3:00; S / M / L: 4 / 7 / 10 штук', '3:30; S / M / L: 4 / 7 / 10 штук', '3:30; S / M / L: 3 / 5 / 8 штук', '3:00; S / M / L: 3 / 6 / 9 штук'], correct: 1, note: 'Митболлы: 3:30; S / M / L — 4 / 7 / 10 штук.' },
   { id: 24, text: 'Какой стандарт у рыбных палочек?', options: ['3:00; S / M / L: 3 / 5 / 8 штук; строго в один слой', '3:30; S / M / L: 3 / 5 / 8 штук; встряхнуть через 30 секунд', '3:00; S / M / L: 4 / 6 / 9 штук', '2:30; S / M / L: 3 / 5 / 8 штук'], correct: 0, note: 'Рыбные палочки: 3:00; S / M / L — 3 / 5 / 8 штук; готовить строго в один слой.' },
   { id: 25, text: 'Какой стандарт у темпурных креветок?', options: ['3:00; S / M / L: 3 / 5 / 8 штук', '3:30; S / M / L: 3 / 5 / 8 штук', '3:30; S / M / L: 4 / 7 / 10 штук', '3:00; S / M / L: 3 / 6 / 9 штук'], correct: 1, note: 'Темпурные креветки: 3:30; S / M / L — 3 / 5 / 8 штук.' },
-  { id: 26, text: 'Какой стандарт у жареных пельменей?', options: ['3:00; 175 г; перед жаркой разделить слипшиеся пельмени', '3:00; 240 г; жарить без подготовки', '3:30; 175 г; встряхнуть через 30 секунд', '2:30; 175 г; готовить в два слоя'], correct: 0, note: 'Жареные пельмени: 3:00; 175 г. Перед жаркой обязательно разделите слипшиеся пельмени.' },
+  { id: 26, text: 'Какой стандарт у жареных пельменей?', options: ['3:00; 175 г; перед жаркой разделить слипшиеся пельмени', '3:00; 240 г; жарить без подготовки', '3:30; 175 г; встряхнуть через 30 секунд', '2:30; 175 г; готовить в два слоя'], correct: 0, note: 'Жареные пельмени: 3:00; 175 г. Перед жаркой обязательно разделите слипшиеся пельмени.', image: '/training-assets/fryer-pelmeni.png', imageAlt: 'Жареные пельмени по стандарту' },
 ];
 
 const burgerQuestions: Question[] = [
@@ -98,7 +100,7 @@ const pizzaQuestions: Question[] = [
 ];
 
 const shawarmaQuestions: Question[] = [
-  { id: 1, text: 'В каком направлении собирают шаурму?', options: ['Сверху вниз', 'Строго снизу вверх', 'Сначала соусы, остальное в любом порядке', 'Порядок не важен'], correct: 1, note: 'Шаурму собирают строго снизу вверх; каждый ингредиент — отдельный слой.' },
+  { id: 1, text: 'В каком направлении собирают шаурму?', options: ['Сверху вниз', 'Строго снизу вверх', 'Сначала соусы, остальное в любом порядке', 'Порядок не важен'], correct: 1, note: 'Шаурму собирают строго снизу вверх; каждый ингредиент — отдельный слой.', image: '/training-assets/shawarma-box.png', imageAlt: 'Упаковка шаурмы' },
   { id: 2, text: 'На скольких листах пергамента нужно собирать и жарить шаурму?', options: ['На одном листе', 'На двух листах', 'Только на фольге', 'Без пергамента'], correct: 0, note: 'Тортилья, сборка и гриль выполняются на одном листе пергамента.' },
   { id: 3, text: 'Какие слои разогревают в СВЧ до добавления овощей?', options: ['Тортилью, нижний соус и куриное филе', 'Тортилью, айсберг и томаты', 'Огурцы, томаты и айсберг', 'Всю собранную шаурму'], correct: 0, note: 'В СВЧ разогревают первые три слоя: тортилью, нижний соус и куриное филе.' },
   { id: 4, text: 'Какой режим СВЧ используют для первых трёх слоёв?', options: ['0:30, кнопка 3', '1:00, кнопка 5', '1:30, кнопка 6', '2:00, кнопка 7'], correct: 0, note: 'Первые три слоя разогревают в СВЧ 0:30, кнопка 3.' },
@@ -161,20 +163,29 @@ export default function Home() {
   const [dateFilter, setDateFilter] = useState('');
   const [teamDraft, setTeamDraft] = useState('');
   const [teamActionState, setTeamActionState] = useState<'idle' | 'saving' | 'error'>('idle');
+  const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
+  const [selectedStaffId, setSelectedStaffId] = useState('');
+  const [staffPin, setStaffPin] = useState('');
+  const [staffAuthenticated, setStaffAuthenticated] = useState(false);
+  const [staffLoginState, setStaffLoginState] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [issuedPins, setIssuedPins] = useState<IssuedPin[]>([]);
+  const [deadlines, setDeadlines] = useState<Record<string, string>>({});
+  const [deadlineDrafts, setDeadlineDrafts] = useState<Record<string, string>>({});
+  const [deadlineState, setDeadlineState] = useState<'idle' | 'saving' | 'error'>('idle');
   const today = useMemo(() => new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date()), []);
   const questions = activeCategory?.questions ?? [];
   const score = answers.reduce((sum, answer, index) => sum + Number(answer === questions[index]?.correct), 0);
   const currentPassScore = activeCategory?.passScore ?? passScore;
   const passed = score >= currentPassScore;
   useEffect(() => { void fetch('/api/manager/session').then(async (response) => response.ok ? response.json() as Promise<{ authenticated: boolean }> : { authenticated: false }).then((data) => setManagerAuthenticated(Boolean(data.authenticated))).catch(() => setManagerAuthenticated(false)); }, []);
-  const begin = () => { if (employee.trim()) setScreen('categories'); };
+  useEffect(() => { void Promise.all([fetch('/api/staff'), fetch('/api/staff/session')]).then(async ([membersResponse, sessionResponse]) => { const members = membersResponse.ok ? await membersResponse.json() as { members: StaffMember[] } : { members: [] }; const session = sessionResponse.ok ? await sessionResponse.json() as { authenticated: boolean; member: StaffMember | null } : { authenticated: false, member: null }; setStaffMembers(members.members); if (session.authenticated && session.member) { setStaffAuthenticated(true); setEmployee(session.member.name); setSelectedStaffId(String(session.member.id)); } }).catch(() => undefined); }, []);
   const openCategory = (category: Category) => { if (!category.questions) return; setActiveCategory(category); setQuestionIndex(0); setAnswers([]); setSelected(null); setScreen('quiz'); };
   const recordAttempt = async (finalAnswers: number[]) => {
     if (!activeCategory) return;
     const finalScore = finalAnswers.reduce((sum, answer, index) => sum + Number(answer === questions[index]?.correct), 0);
     setSaveState('saving');
     try {
-      const response = await fetch('/api/attempts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ employeeName: employee, categoryId: activeCategory.id, categoryTitle: activeCategory.title, score: finalScore, total: questions.length }) });
+      const response = await fetch('/api/attempts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ categoryId: activeCategory.id, categoryTitle: activeCategory.title, answers: finalAnswers }) });
       if (!response.ok) throw new Error('save failed');
       const data = await response.json() as { attempt: Attempt };
       setAttempts((current) => [data.attempt, ...current]);
@@ -185,19 +196,20 @@ export default function Home() {
     if (!authorized) { setScreen('managerLogin'); return; }
     setJournalLoading(true);
     try {
-      const [attemptResponse, teamResponse] = await Promise.all([fetch('/api/attempts'), fetch('/api/team')]);
-      if (attemptResponse.status === 401 || teamResponse.status === 401) { setManagerAuthenticated(false); setScreen('managerLogin'); return; }
-      if (!attemptResponse.ok || !teamResponse.ok) throw new Error('load failed');
-      const [attemptData, teamData] = await Promise.all([attemptResponse.json() as Promise<{ attempts: Attempt[] }>, teamResponse.json() as Promise<{ members: TeamMember[] }>]);
+      const [attemptResponse, teamResponse, deadlineResponse] = await Promise.all([fetch('/api/attempts'), fetch('/api/team'), fetch('/api/deadlines')]);
+      if (attemptResponse.status === 401 || teamResponse.status === 401 || deadlineResponse.status === 401) { setManagerAuthenticated(false); setScreen('managerLogin'); return; }
+      if (!attemptResponse.ok || !teamResponse.ok || !deadlineResponse.ok) throw new Error('load failed');
+      const [attemptData, teamData, deadlineData] = await Promise.all([attemptResponse.json() as Promise<{ attempts: Attempt[] }>, teamResponse.json() as Promise<{ members: TeamMember[] }>, deadlineResponse.json() as Promise<{ deadlines: Record<string, string> }>]);
       setAttempts(attemptData.attempts);
       setTeamMembers(teamData.members);
+      setDeadlines(deadlineData.deadlines); setDeadlineDrafts(deadlineData.deadlines);
     } finally { setJournalLoading(false); setScreen('dashboard'); }
   };
   const loadMyResults = async () => {
     if (!employee.trim()) return;
     setJournalLoading(true);
     try {
-      const response = await fetch(`/api/attempts?employeeName=${encodeURIComponent(employee.trim())}`);
+      const response = await fetch('/api/attempts');
       if (!response.ok) throw new Error('load failed');
       const data = await response.json() as { attempts: Attempt[] };
       setAttempts(data.attempts);
@@ -225,6 +237,22 @@ export default function Home() {
     setSelectedEmployee(null);
     setScreen(employee.trim() ? 'categories' : 'welcome');
   };
+  const signInStaff = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const memberId = Number(selectedStaffId);
+    if (!memberId || !staffPin) return;
+    setStaffLoginState('loading');
+    try {
+      const response = await fetch('/api/staff/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ memberId, pin: staffPin }) });
+      if (!response.ok) throw new Error('staff login failed');
+      const data = await response.json() as { member: StaffMember };
+      setEmployee(data.member.name); setSelectedStaffId(String(data.member.id)); setStaffPin(''); setStaffAuthenticated(true); setStaffLoginState('idle'); setScreen('categories');
+    } catch { setStaffLoginState('error'); }
+  };
+  const signOutStaff = async () => {
+    await fetch('/api/staff/logout', { method: 'POST' }).catch(() => undefined);
+    setStaffAuthenticated(false); setEmployee(''); setSelectedStaffId(''); setStaffPin(''); setAttempts([]); setScreen('welcome');
+  };
   const saveTeamMembers = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const names = teamDraft.split(/[\n,;]+/).map((name) => name.trim()).filter(Boolean);
@@ -233,8 +261,10 @@ export default function Home() {
     try {
       const response = await fetch('/api/team', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ names }) });
       if (!response.ok) throw new Error('team save failed');
-      const data = await response.json() as { members: TeamMember[] };
+      const data = await response.json() as { members: TeamMember[]; issuedPins: IssuedPin[] };
       setTeamMembers(data.members);
+      setStaffMembers(data.members.map(({ id, name }) => ({ id, name })));
+      setIssuedPins(data.issuedPins);
       setTeamDraft('');
       setTeamActionState('idle');
     } catch { setTeamActionState('error'); }
@@ -244,7 +274,30 @@ export default function Home() {
     const response = await fetch(`/api/team?id=${member.id}`, { method: 'DELETE' });
     if (!response.ok) return;
     setTeamMembers((current) => current.filter((item) => item.id !== member.id));
+    setStaffMembers((current) => current.filter((item) => item.id !== member.id));
     if (selectedEmployee === member.name) setSelectedEmployee(null);
+  };
+  const reissuePin = async (member: TeamMember) => {
+    const response = await fetch('/api/team/pin', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ memberId: member.id }) });
+    if (!response.ok) return;
+    const data = await response.json() as { issuedPin: IssuedPin };
+    setIssuedPins((current) => [data.issuedPin, ...current.filter((item) => item.id !== member.id)]);
+    setTeamMembers((current) => current.map((item) => item.id === member.id ? { ...item, pinConfigured: true } : item));
+  };
+  const exportPins = () => {
+    const rows = [['Сотрудник', 'Личный PIN'], ...issuedPins.map((item) => [item.name, item.pin])];
+    const file = new Blob([`\ufeff${rows.map((row) => row.map((value) => `"${value.replaceAll('"', '""')}"`).join(';')).join('\n')}`], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(file); const link = document.createElement('a');
+    link.href = url; link.download = `личные-pin-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url);
+  };
+  const saveDeadlines = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); setDeadlineState('saving');
+    try {
+      const response = await fetch('/api/deadlines', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ deadlines: categories.map((category) => ({ categoryId: category.id, dueDate: deadlineDrafts[category.id] ?? '' })) }) });
+      if (!response.ok) throw new Error('deadline save failed');
+      const data = await response.json() as { deadlines: Record<string, string> };
+      setDeadlines(data.deadlines); setDeadlineDrafts(data.deadlines); setDeadlineState('idle');
+    } catch { setDeadlineState('error'); }
   };
   const nextQuestion = () => { if (selected === null) return; const nextAnswers = [...answers, selected]; if (questionIndex + 1 === questions.length) { setAnswers(nextAnswers); setScreen('result'); void recordAttempt(nextAnswers); return; } setAnswers(nextAnswers); setQuestionIndex((index) => index + 1); setSelected(null); };
   const retry = () => { setQuestionIndex(0); setAnswers([]); setSelected(null); setScreen('quiz'); };
@@ -278,6 +331,9 @@ export default function Home() {
   const passedCategories = allTeamStatuses.filter((status) => status === 'passed').length;
   const employeesToRepeat = teamMembers.filter((member) => categories.some((category) => currentStatus(member.name, category.id) === 'failed')).length;
   const employeesNotStarted = teamMembers.filter((member) => categories.every((category) => currentStatus(member.name, category.id) === 'missing')).length;
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const isOverdue = (memberName: string, categoryId: string) => Boolean(deadlines[categoryId] && deadlines[categoryId] < todayIso && currentStatus(memberName, categoryId) !== 'passed');
+  const overdueCategories = teamMembers.flatMap((member) => categories.filter((category) => isOverdue(member.name, category.id))).length;
   const selectedEmployeeAttempts = selectedEmployee ? attempts.filter((attempt) => normalizeName(attempt.employeeName) === normalizeName(selectedEmployee)) : [];
   const selectedEmployeeBest = selectedEmployeeAttempts.reduce<Attempt | null>((best, attempt) => !best || attempt.score / attempt.total > best.score / best.total ? attempt : best, null);
   const exportAttempts = () => {
@@ -288,16 +344,38 @@ export default function Home() {
     const link = document.createElement('a');
     link.href = url; link.download = `результаты-обучения-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url);
   };
+  const topicForQuestion = (question: Question) => {
+    const text = question.text.toLocaleLowerCase('ru-RU');
+    if (text.includes('температур') || text.includes('°c')) return 'Температура';
+    if (text.includes('сколько готов') || text.includes('время') || text.includes('свч') || text.includes('грил') || text.includes('печ')) return 'Время приготовления';
+    if (text.includes('сколько ') || text.includes('какая масса') || text.includes('какой выход') || text.includes('фасовк') || text.includes('порци')) return 'Граммовка и порция';
+    if (text.includes('упаков') || text.includes('отдают') || text.includes('пакет') || text.includes('крышк')) return 'Упаковка и выдача';
+    if (text.includes('поряд') || text.includes('последователь') || text.includes('слой') || text.includes('направлен')) return 'Порядок приготовления';
+    return 'Рецептура и ингредиенты';
+  };
+  const errorTopics = useMemo(() => {
+    const summary = new Map<string, number>();
+    for (const attempt of attempts) {
+      const source = categories.find((category) => category.id === attempt.categoryId)?.questions;
+      if (!source || !attempt.answers) continue;
+      source.forEach((question, index) => { if (attempt.answers?.[index] !== question.correct) { const topic = topicForQuestion(question); summary.set(topic, (summary.get(topic) ?? 0) + 1); } });
+    }
+    return [...summary.entries()].sort((left, right) => right[1] - left[1]).slice(0, 5);
+  }, [attempts]);
+
+  if (screen === 'quiz' && activeCategory && questions[questionIndex]) { const question = questions[questionIndex]; return <main className="trainer-shell"><header className="topbar"><button className="brand" onClick={() => setScreen('categories')} aria-label="К выбору категории"><span className="brand-mark">S</span><span><b>STANDART</b><small>Тренажёр знаний</small></span></button><div className="topbar-meta"><span className="employee-chip">{employee}</span><span className="date-chip">{today}</span></div></header><section className="quiz-view"><div className="quiz-topline"><button className="back-button" onClick={() => setScreen('categories')}>← К категориям</button><span>{activeCategory.title} · вопрос {questionIndex + 1} из {questions.length}</span></div><div className="progress-track" aria-label={`Выполнено ${questionIndex + 1} из ${questions.length}`}><i style={{ width: `${((questionIndex + 1) / questions.length) * 100}%` }} /></div><article className="question-card"><span className="question-number">{String(questionIndex + 1).padStart(2, '0')}</span><p className="question-kicker">ВЫБЕРИТЕ ОДИН ВАРИАНТ</p>{question.image && <figure className="question-visual"><img src={question.image} alt={question.imageAlt ?? 'Визуальный материал стандарта'} /><figcaption>Визуальная карточка стандарта</figcaption></figure>}<h1>{question.text}</h1><div className="answer-list">{question.options.map((option, index) => <button key={option} className={`answer-option ${selected === index ? 'selected' : ''}`} onClick={() => setSelected(index)} aria-pressed={selected === index}><span>{String.fromCharCode(65 + index)}</span><p>{option}</p><i aria-hidden="true" /></button>)}</div><div className="question-actions"><span>{selected === null ? 'Выберите вариант ответа' : 'Ответ выбран'}</span><button className="primary-button" onClick={nextQuestion} disabled={selected === null}>{questionIndex + 1 === questions.length ? 'Завершить тест' : 'Следующий вопрос'} <b>→</b></button></div></article></section></main>; }
+
+  if (screen === 'dashboard') return <main className="trainer-shell"><header className="topbar"><button className="brand" onClick={() => setScreen('categories')} aria-label="К выбору категории"><span className="brand-mark">S</span><span><b>STANDART</b><small>Тренажёр знаний</small></span></button><div className="topbar-meta"><button className="journal-button" onClick={() => void loadJournal()} disabled={journalLoading}>{journalLoading ? 'Обновляем…' : 'Обновить данные'}</button><button className="staff-switch-button" onClick={() => void signOutManager()}>Выйти</button><span className="date-chip">{today}</span></div></header><section className="dashboard-view manager-dashboard"><div className="dashboard-top"><div><button className="back-button" onClick={() => setScreen('categories')}>← К категориям</button><p className="eyebrow">ПАНЕЛЬ РУКОВОДИТЕЛЯ</p><h1>Контроль обучения</h1></div></div><div className="manager-stat-grid"><article><span>В команде</span><b>{teamMembers.length}</b><small>сотрудников в реестре</small></article><article><span>Категории сданы</span><b>{passedCategories} <em>/ {teamMembers.length * categories.length}</em></b><small>по последней попытке</small></article><article><span>Нужна пересдача</span><b>{employeesToRepeat}</b><small>сотрудников с ошибкой</small></article><article><span>Ещё не сдавали</span><b>{employeesNotStarted}</b><small>ни одной категории</small></article><article><span>Просрочено</span><b>{overdueCategories}</b><small>категорий после срока</small></article><article><span>Средний балл</span><b>{averageScore}%</b><small>по всем попыткам</small></article></div><div className="manager-tabs" role="tablist"><button className={managerTab === 'summary' ? 'active' : ''} onClick={() => setManagerTab('summary')}>Сводка команды</button><button className={managerTab === 'attempts' ? 'active' : ''} onClick={() => setManagerTab('attempts')}>Журнал попыток</button><button className={managerTab === 'team' ? 'active' : ''} onClick={() => setManagerTab('team')}>Сотрудники</button><button className={managerTab === 'deadlines' ? 'active' : ''} onClick={() => setManagerTab('deadlines')}>Сроки</button></div>{managerTab !== 'team' && managerTab !== 'deadlines' && <div className="manager-filters"><label><span>Сотрудник</span><input value={employeeFilter} onChange={(event) => setEmployeeFilter(event.target.value)} placeholder="Поиск по ФИО" /></label><label><span>Категория</span><select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="all">Все категории</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.title}</option>)}</select></label><label><span>Статус</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | ProgressStatus)}><option value="all">Все статусы</option><option value="passed">Сдано</option><option value="failed">Нужна пересдача</option>{managerTab === 'summary' && <option value="missing">Не сдавали</option>}</select></label>{managerTab === 'attempts' && <label><span>Дата попытки</span><input type="date" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} /></label>}</div>}{managerTab === 'summary' && <><div className="manager-section-heading"><div><h2>Матрица прохождения</h2><p>Нажмите на сотрудника или результат, чтобы открыть его карточку.</p></div><span>{filteredTeam.length} из {teamMembers.length}</span></div>{teamMembers.length === 0 ? <div className="manager-empty"><b>Сначала добавьте команду</b><p>Перейдите во вкладку «Сотрудники», вставьте список ФИО и сразу скачайте автоматически созданные PIN-коды.</p><button className="secondary-button" onClick={() => setManagerTab('team')}>Добавить сотрудников</button></div> : <div className="matrix-table"><div className="matrix-row matrix-head" style={{ gridTemplateColumns: `minmax(190px, 1.5fr) repeat(${shownCategories.length}, minmax(112px, 1fr))` }}><span>Сотрудник</span>{shownCategories.map((category) => <span key={category.id}>{category.title}</span>)}</div>{filteredTeam.length === 0 ? <p className="empty-attempts">По текущему фильтру сотрудников не найдено.</p> : filteredTeam.map((member) => <div className="matrix-row" key={member.id} style={{ gridTemplateColumns: `minmax(190px, 1.5fr) repeat(${shownCategories.length}, minmax(112px, 1fr))` }}><button className="member-name" onClick={() => setSelectedEmployee(member.name)}>{member.name}</button>{shownCategories.map((category) => { const attempt = latestByEmployeeCategory.get(attemptKey(member.name, category.id)); const status = currentStatus(member.name, category.id); const overdue = isOverdue(member.name, category.id); return <button className={`matrix-cell ${status} ${overdue ? 'overdue' : ''}`} key={category.id} onClick={() => setSelectedEmployee(member.name)}><b>{attempt ? `${attempt.score} / ${attempt.total}` : '—'}</b><small>{overdue ? 'Просрочено' : status === 'passed' ? 'Зачёт' : status === 'failed' ? 'Повторить' : 'Не сдавал'}</small></button>; })}</div>)}</div>}<div className="analytics-card"><div><p className="eyebrow">АНАЛИТИКА ОШИБОК</p><h2>Что повторить команде</h2><p>Показывает темы ошибок по новым попыткам — без просмотра ответов каждого сотрудника вручную.</p></div><div className="topic-list">{errorTopics.length ? errorTopics.map(([topic, amount]) => <div key={topic}><span>{topic}</span><b>{amount}</b></div>) : <p>Появится после первых защищённых прохождений с PIN.</p>}</div></div>{selectedEmployee && <section className="employee-detail"><div className="employee-detail-top"><div><p className="eyebrow">КАРТОЧКА СОТРУДНИКА</p><h2>{selectedEmployee}</h2></div><button className="close-detail" onClick={() => setSelectedEmployee(null)}>Закрыть ×</button></div><div className="detail-summary"><article><span>Всего попыток</span><b>{selectedEmployeeAttempts.length}</b></article><article><span>Последний результат</span><b>{selectedEmployeeAttempts[0] ? `${selectedEmployeeAttempts[0].score} / ${selectedEmployeeAttempts[0].total}` : '—'}</b></article><article><span>Лучший результат</span><b>{selectedEmployeeBest ? `${selectedEmployeeBest.score} / ${selectedEmployeeBest.total}` : '—'}</b></article></div><div className="detail-status-grid">{categories.map((category) => { const attempt = latestByEmployeeCategory.get(attemptKey(selectedEmployee, category.id)); const status = currentStatus(selectedEmployee, category.id); const overdue = isOverdue(selectedEmployee, category.id); return <button key={category.id} className={`detail-status ${status} ${overdue ? 'overdue' : ''}`} onClick={() => setCategoryFilter(category.id)}><span>{category.title}</span><b>{attempt ? `${attempt.score} / ${attempt.total}` : 'Не сдавал'}</b><small>{overdue ? 'Просрочено' : status === 'passed' ? 'Зачёт' : status === 'failed' ? 'Нужна пересдача' : 'Нет попытки'}</small></button>; })}</div><div className="detail-attempts"><h3>Все попытки</h3>{selectedEmployeeAttempts.length === 0 ? <p>Сотрудник ещё не проходил тесты.</p> : selectedEmployeeAttempts.map((attempt) => <div key={attempt.id}><span>{attempt.categoryTitle}</span><span>{new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(attempt.completedAt))}</span><b>{attempt.score} / {attempt.total}</b><i className={attempt.passed ? 'status-pass' : 'status-repeat'}>{attempt.passed ? 'Зачёт' : 'Повторить'}</i></div>)}</div></section>}</>}{managerTab === 'attempts' && <><div className="manager-section-heading"><div><h2>Журнал попыток</h2><p>Показывает каждую сдачу; выгрузка учитывает текущие фильтры.</p></div><button className="secondary-button" onClick={exportAttempts}>Скачать CSV</button></div><div className="attempt-table"><div className="attempt-table-head"><span>Сотрудник</span><span>Категория</span><span>Дата</span><span>Результат</span><span>Статус</span></div>{filteredAttempts.length === 0 ? <p className="empty-attempts">Попыток по этому фильтру пока нет.</p> : filteredAttempts.map((attempt) => <div className="attempt-row" key={attempt.id}><button className="attempt-member" onClick={() => { setSelectedEmployee(attempt.employeeName); setManagerTab('summary'); }}>{attempt.employeeName}</button><span>{attempt.categoryTitle}</span><span>{new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(attempt.completedAt))}</span><strong>{attempt.score} / {attempt.total}</strong><i className={attempt.passed ? 'status-pass' : 'status-repeat'}>{attempt.passed ? 'Зачёт' : 'Повторить'}</i></div>)}</div></>}{managerTab === 'team' && <><div className="manager-section-heading"><div><h2>Реестр команды и PIN-коды</h2><p>При добавлении новых сотрудников система создаёт личный шестизначный PIN. Его можно скачать и передать сотруднику.</p></div><span>{teamMembers.length} сотрудников</span></div><form className="team-import" onSubmit={(event) => void saveTeamMembers(event)}><label htmlFor="team-members">Список ФИО</label><textarea id="team-members" value={teamDraft} onChange={(event) => { setTeamDraft(event.target.value); setTeamActionState('idle'); }} placeholder={'Одно ФИО на строку\nАнна Соколова\nИван Петров'} /><div><small>Можно вставить до 100 имён за раз: по одному в строке, через запятую или точку с запятой.</small><button className="primary-button" type="submit" disabled={!teamDraft.trim() || teamActionState === 'saving'}>{teamActionState === 'saving' ? 'Сохраняем…' : 'Добавить и создать PIN'} <span>→</span></button></div>{teamActionState === 'error' && <p className="team-error">Не удалось сохранить список. Попробуйте ещё раз.</p>}</form>{issuedPins.length > 0 && <section className="pin-panel"><div><p className="eyebrow">НОВЫЕ PIN-КОДЫ</p><h3>Сохраните их сейчас</h3><p>Коды показываются только после создания или перевыпуска. Скачать таблицу удобнее всего до закрытия страницы.</p></div><button className="secondary-button" onClick={exportPins}>Скачать PIN в CSV</button><div className="pin-list">{issuedPins.map((item) => <div key={item.id}><span>{item.name}</span><b>{item.pin}</b></div>)}</div></section>}<div className="team-list">{teamMembers.length === 0 ? <p className="empty-attempts">Реестр пока пуст.</p> : teamMembers.map((member) => <div key={member.id}><span><b>{member.name}</b><small>{member.pinConfigured ? 'PIN настроен' : 'PIN не задан'}</small></span><div><button onClick={() => void reissuePin(member)}>Новый PIN</button><button onClick={() => void removeTeamMember(member)} aria-label={`Убрать ${member.name} из списка`}>Убрать</button></div></div>)}</div></>}{managerTab === 'deadlines' && <><div className="manager-section-heading"><div><h2>Сроки прохождения</h2><p>Укажите дату для каждой категории. После срока в сводке подсветятся непройденные и несданные категории.</p></div></div><form className="deadline-form" onSubmit={(event) => void saveDeadlines(event)}>{categories.map((category) => <label key={category.id}><span>{category.title}</span><input type="date" value={deadlineDrafts[category.id] ?? ''} onChange={(event) => setDeadlineDrafts((current) => ({ ...current, [category.id]: event.target.value }))} /><small>{deadlines[category.id] ? `Установлен срок: ${new Intl.DateTimeFormat('ru-RU').format(new Date(`${deadlines[category.id]}T00:00:00`))}` : 'Срок не установлен'}</small></label>)}<button className="primary-button" type="submit" disabled={deadlineState === 'saving'}>{deadlineState === 'saving' ? 'Сохраняем…' : 'Сохранить сроки'} <span>→</span></button>{deadlineState === 'error' && <p className="team-error">Не удалось сохранить сроки. Попробуйте ещё раз.</p>}</form></>}</section></main>;
 
   return <main className="trainer-shell">
     <header className="topbar">
       <button className="brand" onClick={() => screen !== 'welcome' && setScreen('categories')} aria-label="К выбору категории"><span className="brand-mark">S</span><span><b>STANDART</b><small>Тренажёр знаний</small></span></button>
-      <div className="topbar-meta">{employee && <button className="journal-button my-results-button" onClick={() => void loadMyResults()} disabled={journalLoading}>{journalLoading ? 'Открываем…' : 'Мои результаты'}</button>}<button className="journal-button" onClick={() => void loadJournal()} disabled={journalLoading}>{managerAuthenticated ? 'Журнал руководителя' : 'Вход руководителя'}</button>{employee && <span className="employee-chip">{employee}</span>}<span className="date-chip">{today}</span></div>
+      <div className="topbar-meta">{staffAuthenticated && <><button className="journal-button my-results-button" onClick={() => void loadMyResults()} disabled={journalLoading}>{journalLoading ? 'Открываем…' : 'Мои результаты'}</button><button className="staff-switch-button" onClick={() => void signOutStaff()}>Сменить сотрудника</button></>}<button className="journal-button" onClick={() => void loadJournal()} disabled={journalLoading}>{managerAuthenticated ? 'Журнал руководителя' : 'Вход руководителя'}</button>{staffAuthenticated && <span className="employee-chip">{employee}</span>}<span className="date-chip">{today}</span></div>
     </header>
 
     {screen === 'welcome' && <section className="welcome-view">
       <div className="welcome-copy"><p className="eyebrow">ПРОВЕРКА ЗНАНИЙ · НОВЫЕ СТАНДАРТЫ</p><h1>Знай стандарт.<br /><em>Готовь уверенно.</em></h1><p className="lead">Выберите направление, ответьте на вопросы и сразу разберите ошибки — до следующей смены, а не после неё.</p><div className="feature-row"><span>✓ Результат сразу</span><span>✓ Разбор ошибок</span><span>✓ Статистика попыток</span></div></div>
-      <form className="identity-card" onSubmit={(event) => { event.preventDefault(); begin(); }}><span className="step-label">01 / НАЧАТЬ</span><h2>Кто проходит тест?</h2><p>Укажите имя — оно попадёт в журнал результатов.</p><label htmlFor="employee">ФИО сотрудника</label><input id="employee" value={employee} onChange={(event) => setEmployee(event.target.value)} placeholder="Например, Анна Соколова" autoComplete="name" /><div className="autodate"><span>Дата прохождения</span><b>{today}</b></div><button className="primary-button" type="submit" disabled={!employee.trim()}>Выбрать категорию <span>→</span></button><small className="privacy-note">Результат будет сохранён в журнале обучения.</small></form>
+      <form className="identity-card" onSubmit={(event) => void signInStaff(event)}><span className="step-label">01 / ВХОД СОТРУДНИКА</span><h2>Кто проходит тест?</h2><p>Выберите себя и введите личный PIN — так результат точно попадёт в вашу историю.</p><label htmlFor="staff-member">Сотрудник</label><select id="staff-member" value={selectedStaffId} onChange={(event) => { setSelectedStaffId(event.target.value); setStaffLoginState('idle'); }} disabled={staffAuthenticated || staffMembers.length === 0}><option value="">{staffMembers.length ? 'Выберите себя из списка' : 'Руководитель ещё не добавил сотрудников'}</option>{staffMembers.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select><label htmlFor="staff-pin" className="pin-label">Личный PIN</label><input id="staff-pin" type="password" inputMode="numeric" value={staffPin} onChange={(event) => { setStaffPin(event.target.value.replace(/\D/g, '').slice(0, 6)); setStaffLoginState('idle'); }} placeholder="6 цифр" autoComplete="one-time-code" disabled={staffAuthenticated} /><div className="autodate"><span>Дата прохождения</span><b>{today}</b></div><button className="primary-button" type="submit" disabled={staffAuthenticated || !selectedStaffId || staffPin.length !== 6 || staffLoginState === 'loading'}>{staffLoginState === 'loading' ? 'Проверяем…' : 'Выбрать категорию'} <span>→</span></button>{staffLoginState === 'error' && <small className="login-error">Проверьте выбранное имя и PIN.</small>}<small className="privacy-note">PIN выдаёт руководитель в разделе «Сотрудники».</small></form>
     </section>}
 
     {screen === 'categories' && <section className="category-view"><div className="section-heading"><div><p className="eyebrow">02 / НАПРАВЛЕНИЕ</p><h1>Что повторяем сегодня?</h1></div><p>Все тесты основаны на утверждённых новых стандартах.</p></div><div className="category-grid">{categories.map((category) => <article className={`category-card ${category.color} ${category.questions ? 'ready' : 'soon'}`} key={category.id}><div className="category-icon" aria-hidden="true">{category.icon}</div><div className="category-info"><span>{category.questions ? 'ГОТОВО' : 'СКОРО'}</span><h2>{category.title}</h2><p>{category.subtitle}</p></div><button onClick={() => openCategory(category)} disabled={!category.questions}>{category.questions ? 'Начать тест' : 'В подготовке'} <b>→</b></button></article>)}</div><p className="category-footnote">Фритюр, бургеры, пицца, шаурма и азиатская линейка: зачёт от 21/26. Кофе, лимонады и русская кухня: зачёт от 13/16.</p></section>}

@@ -1,0 +1,1 @@
+ALTER TABLE `attempts` ADD `answers_json` text;

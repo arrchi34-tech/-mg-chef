@@ -15,6 +15,20 @@
       "when": 1789459817326,
       "tag": "0001_sweet_overlord",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789461849045,
+      "tag": "0002_right_odin",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1789461882037,
+      "tag": "0003_luxuriant_nebula",
+      "breakpoints": true
     }
   ]
 }

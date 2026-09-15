@@ -10,7 +10,8 @@ export async function ensureSchema() {
       score INTEGER NOT NULL,
       total INTEGER NOT NULL,
       passed INTEGER NOT NULL,
-      completed_at TEXT NOT NULL
+      completed_at TEXT NOT NULL,
+      answers_json TEXT
     )`),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_attempts_completed_at ON attempts (completed_at DESC)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_attempts_employee_name ON attempts (employee_name, completed_at DESC)'),
@@ -18,8 +19,13 @@ export async function ensureSchema() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
       active INTEGER NOT NULL DEFAULT 1,
+      pin_hash TEXT,
       created_at TEXT NOT NULL
     )`),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_team_members_active_name ON team_members (active, name)'),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS category_deadlines (
+      category_id TEXT PRIMARY KEY,
+      due_date TEXT NOT NULL
+    )`),
   ]);
 }

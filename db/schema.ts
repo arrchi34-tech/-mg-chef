@@ -11,6 +11,7 @@ export const attempts = sqliteTable(
     total: integer('total').notNull(),
     passed: integer('passed').notNull(),
     completedAt: text('completed_at').notNull(),
+    answersJson: text('answers_json'),
   },
   (table) => [
     index('idx_attempts_completed_at').on(table.completedAt),
@@ -24,7 +25,13 @@ export const teamMembers = sqliteTable(
     id: integer('id').primaryKey({ autoIncrement: true }),
     name: text('name').notNull().unique(),
     active: integer('active').notNull().default(1),
+    pinHash: text('pin_hash'),
     createdAt: text('created_at').notNull(),
   },
   (table) => [index('idx_team_members_active_name').on(table.active, table.name)],
 );
+
+export const categoryDeadlines = sqliteTable('category_deadlines', {
+  categoryId: text('category_id').primaryKey(),
+  dueDate: text('due_date').notNull(),
+});
