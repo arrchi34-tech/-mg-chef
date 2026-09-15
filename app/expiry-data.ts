@@ -1,4 +1,4 @@
-export type ExpiryEvent = 'defrost' | 'opened';
+export type ExpiryLabelMode = 'opening-and-expiry' | 'defrost-and-expiry' | 'opening-only';
 
 export type ExpiryItem = {
   id: string;
@@ -8,6 +8,7 @@ export type ExpiryItem = {
   openedHours?: number;
   defrostRule?: string;
   openedRule?: string;
+  labelMode?: ExpiryLabelMode;
   condition: string;
 };
 
