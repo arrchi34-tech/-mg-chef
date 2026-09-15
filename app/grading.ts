@@ -7,6 +7,7 @@ export const correctAnswers: Record<string, number[]> = {
   lemonades: [1, 1, 2, 2, 1, 1, 2, 0, 2, 1, 1, 1, 0, 2, 0, 0],
   asian: [2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 1, 1, 1, 2, 1, 2, 0, 2, 1, 2, 1, 2, 1, 1, 1, 2],
   russian: [2, 1, 1, 2, 3, 2, 1, 2, 1, 3, 1, 1, 0, 1, 0, 1],
+  expiry: [1, 2, 2, 2, 0, 2, 2, 2, 2, 2],
   'fryer-level-2': [1, 0, 2, 3, 0, 1],
   'burgers-level-2': [1, 0, 2, 1, 0, 2],
   'pizza-level-2': [0, 1, 2, 0, 0, 2],
@@ -18,7 +19,7 @@ export const correctAnswers: Record<string, number[]> = {
 };
 
 export const passingScores: Record<string, number> = {
-  fryer: 21, burgers: 21, pizza: 21, shawarma: 21, coffee: 13, lemonades: 13, asian: 21, russian: 13,
+  fryer: 21, burgers: 21, pizza: 21, shawarma: 21, coffee: 13, lemonades: 13, asian: 21, russian: 13, expiry: 8,
   'fryer-level-2': 5, 'burgers-level-2': 5, 'pizza-level-2': 5, 'shawarma-level-2': 5,
   'coffee-level-2': 5, 'lemonades-level-2': 5, 'asian-level-2': 5, 'russian-level-2': 5,
 };
