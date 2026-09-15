@@ -371,7 +371,7 @@ export default function Home() {
 
   return <main className="trainer-shell">
     <header className="topbar">
-      <button className="brand" onClick={() => screen !== 'welcome' && setScreen('categories')} aria-label="К выбору категории"><span className="brand-mark">S</span><span><b>STANDART</b><small>Тренажёр знаний</small></span></button>
+      <button className="brand" onClick={() => screen !== 'welcome' && setScreen('categories')} aria-label="К выбору категории"><span className="brand-mark">МГ</span><span><b>МНОГО ГОРЯЧЕГО</b><small>Тренажёр стандартов</small></span></button>
       <div className="topbar-meta">{staffAuthenticated && <><button className="journal-button my-results-button" onClick={() => void loadMyResults()} disabled={journalLoading}>{journalLoading ? 'Открываем…' : 'Мои результаты'}</button><button className="staff-switch-button" onClick={() => void signOutStaff()}>Сменить сотрудника</button></>}<button className="journal-button" onClick={() => void loadJournal()} disabled={journalLoading}>{managerAuthenticated ? 'Журнал руководителя' : 'Вход руководителя'}</button>{staffAuthenticated && <span className="employee-chip">{employee}</span>}<span className="date-chip">{today}</span></div>
     </header>
 
