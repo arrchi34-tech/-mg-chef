@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { asianQuestions, coffeeQuestions, lemonadeQuestions, russianQuestions } from './question-banks';
 
 type Question = { id: number; text: string; options: string[]; correct: number; note: string };
@@ -137,7 +137,7 @@ const categories: Category[] = [
 const passScore = 21;
 
 export default function Home() {
-  const [screen, setScreen] = useState<'welcome' | 'categories' | 'quiz' | 'result' | 'dashboard'>('welcome');
+  const [screen, setScreen] = useState<'welcome' | 'categories' | 'quiz' | 'result' | 'dashboard' | 'myResults' | 'managerLogin'>('welcome');
   const [employee, setEmployee] = useState('');
   const [activeCategory, setActiveCategory] = useState<Category | null>(null);
   const [questionIndex, setQuestionIndex] = useState(0);
@@ -146,11 +146,15 @@ export default function Home() {
   const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [journalLoading, setJournalLoading] = useState(false);
+  const [managerAuthenticated, setManagerAuthenticated] = useState(false);
+  const [managerPassword, setManagerPassword] = useState('');
+  const [managerLoginState, setManagerLoginState] = useState<'idle' | 'loading' | 'error'>('idle');
   const today = useMemo(() => new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date()), []);
   const questions = activeCategory?.questions ?? [];
   const score = answers.reduce((sum, answer, index) => sum + Number(answer === questions[index]?.correct), 0);
   const currentPassScore = activeCategory?.passScore ?? passScore;
   const passed = score >= currentPassScore;
+  useEffect(() => { void fetch('/api/manager/session').then(async (response) => response.ok ? response.json() as Promise<{ authenticated: boolean }> : { authenticated: false }).then((data) => setManagerAuthenticated(Boolean(data.authenticated))).catch(() => setManagerAuthenticated(false)); }, []);
   const begin = () => { if (employee.trim()) setScreen('categories'); };
   const openCategory = (category: Category) => { if (!category.questions) return; setActiveCategory(category); setQuestionIndex(0); setAnswers([]); setSelected(null); setScreen('quiz'); };
   const recordAttempt = async (finalAnswers: number[]) => {
@@ -165,14 +169,46 @@ export default function Home() {
       setSaveState('saved');
     } catch { setSaveState('error'); }
   };
-  const loadJournal = async () => {
+  const loadJournal = async (authorized = managerAuthenticated) => {
+    if (!authorized) { setScreen('managerLogin'); return; }
     setJournalLoading(true);
     try {
       const response = await fetch('/api/attempts');
+      if (response.status === 401) { setManagerAuthenticated(false); setScreen('managerLogin'); return; }
       if (!response.ok) throw new Error('load failed');
       const data = await response.json() as { attempts: Attempt[] };
       setAttempts(data.attempts);
     } finally { setJournalLoading(false); setScreen('dashboard'); }
+  };
+  const loadMyResults = async () => {
+    if (!employee.trim()) return;
+    setJournalLoading(true);
+    try {
+      const response = await fetch(`/api/attempts?employeeName=${encodeURIComponent(employee.trim())}`);
+      if (!response.ok) throw new Error('load failed');
+      const data = await response.json() as { attempts: Attempt[] };
+      setAttempts(data.attempts);
+      setScreen('myResults');
+    } finally { setJournalLoading(false); }
+  };
+  const signInManager = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!managerPassword) return;
+    setManagerLoginState('loading');
+    try {
+      const response = await fetch('/api/manager/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: managerPassword }) });
+      if (!response.ok) throw new Error('login failed');
+      setManagerAuthenticated(true);
+      setManagerPassword('');
+      setManagerLoginState('idle');
+      void loadJournal(true);
+    } catch { setManagerLoginState('error'); }
+  };
+  const signOutManager = async () => {
+    await fetch('/api/manager/logout', { method: 'POST' }).catch(() => undefined);
+    setManagerAuthenticated(false);
+    setAttempts([]);
+    setScreen(employee.trim() ? 'categories' : 'welcome');
   };
   const nextQuestion = () => { if (selected === null) return; const nextAnswers = [...answers, selected]; if (questionIndex + 1 === questions.length) { setAnswers(nextAnswers); setScreen('result'); void recordAttempt(nextAnswers); return; } setAnswers(nextAnswers); setQuestionIndex((index) => index + 1); setSelected(null); };
   const retry = () => { setQuestionIndex(0); setAnswers([]); setSelected(null); setScreen('quiz'); };
@@ -182,7 +218,7 @@ export default function Home() {
   return <main className="trainer-shell">
     <header className="topbar">
       <button className="brand" onClick={() => screen !== 'welcome' && setScreen('categories')} aria-label="К выбору категории"><span className="brand-mark">S</span><span><b>STANDART</b><small>Тренажёр знаний</small></span></button>
-      <div className="topbar-meta"><button className="journal-button" onClick={() => void loadJournal()} disabled={journalLoading}>{journalLoading ? 'Открываем…' : 'Журнал'}</button>{employee && <span className="employee-chip">{employee}</span>}<span className="date-chip">{today}</span></div>
+      <div className="topbar-meta">{employee && <button className="journal-button my-results-button" onClick={() => void loadMyResults()} disabled={journalLoading}>{journalLoading ? 'Открываем…' : 'Мои результаты'}</button>}<button className="journal-button" onClick={() => void loadJournal()} disabled={journalLoading}>{managerAuthenticated ? 'Журнал руководителя' : 'Вход руководителя'}</button>{employee && <span className="employee-chip">{employee}</span>}<span className="date-chip">{today}</span></div>
     </header>
 
     {screen === 'welcome' && <section className="welcome-view">
@@ -192,7 +228,11 @@ export default function Home() {
 
     {screen === 'categories' && <section className="category-view"><div className="section-heading"><div><p className="eyebrow">02 / НАПРАВЛЕНИЕ</p><h1>Что повторяем сегодня?</h1></div><p>Все тесты основаны на утверждённых новых стандартах.</p></div><div className="category-grid">{categories.map((category) => <article className={`category-card ${category.color} ${category.questions ? 'ready' : 'soon'}`} key={category.id}><div className="category-icon" aria-hidden="true">{category.icon}</div><div className="category-info"><span>{category.questions ? 'ГОТОВО' : 'СКОРО'}</span><h2>{category.title}</h2><p>{category.subtitle}</p></div><button onClick={() => openCategory(category)} disabled={!category.questions}>{category.questions ? 'Начать тест' : 'В подготовке'} <b>→</b></button></article>)}</div><p className="category-footnote">Фритюр, бургеры, пицца, шаурма и азиатская линейка: зачёт от 21/26. Кофе, лимонады и русская кухня: зачёт от 13/16.</p></section>}
 
-    {screen === 'dashboard' && <section className="dashboard-view"><div className="dashboard-top"><div><button className="back-button" onClick={() => setScreen('categories')}>← К категориям</button><p className="eyebrow">ЖУРНАЛ РУКОВОДИТЕЛЯ</p><h1>Результаты обучения</h1></div><button className="secondary-button" onClick={() => void loadJournal()}>{journalLoading ? 'Обновляем…' : 'Обновить'}</button></div><div className="stat-grid"><article><span>Всего попыток</span><b>{attempts.length}</b></article><article><span>Прошли с зачётом</span><b>{passRate}%</b></article><article><span>Средний результат</span><b>{averageScore}%</b></article></div><div className="attempt-table"><div className="attempt-table-head"><span>Сотрудник</span><span>Категория</span><span>Дата</span><span>Результат</span><span>Статус</span></div>{attempts.length === 0 ? <p className="empty-attempts">Пока нет попыток. Здесь появятся результаты после первого прохождения теста.</p> : attempts.map((attempt) => <div className="attempt-row" key={attempt.id}><b>{attempt.employeeName}</b><span>{attempt.categoryTitle}</span><span>{new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(attempt.completedAt))}</span><strong>{attempt.score} / {attempt.total}</strong><i className={attempt.passed ? 'status-pass' : 'status-repeat'}>{attempt.passed ? 'Зачёт' : 'Повторить'}</i></div>)}</div></section>}
+    {screen === 'managerLogin' && <section className="manager-login"><form className="identity-card manager-card" onSubmit={(event) => void signInManager(event)}><button className="back-button" type="button" onClick={() => setScreen(employee.trim() ? 'categories' : 'welcome')}>← Назад</button><p className="eyebrow">ДОСТУП РУКОВОДИТЕЛЯ</p><h1>Журнал команды</h1><p>Введите пароль руководителя. Только после входа доступны результаты всех сотрудников и общая статистика.</p><label htmlFor="manager-password">Пароль руководителя</label><input id="manager-password" type="password" value={managerPassword} onChange={(event) => { setManagerPassword(event.target.value); setManagerLoginState('idle'); }} autoComplete="current-password" placeholder="Введите пароль" /><button className="primary-button" type="submit" disabled={!managerPassword || managerLoginState === 'loading'}>{managerLoginState === 'loading' ? 'Проверяем…' : 'Открыть журнал'} <span>→</span></button>{managerLoginState === 'error' && <small className="login-error">Пароль не подошёл. Проверьте и попробуйте снова.</small>}<small className="privacy-note">Сотрудники через этот сайт видят только собственные попытки.</small></form></section>}
+
+    {screen === 'dashboard' && <section className="dashboard-view"><div className="dashboard-top"><div><button className="back-button" onClick={() => setScreen('categories')}>← К категориям</button><p className="eyebrow">ЖУРНАЛ РУКОВОДИТЕЛЯ</p><h1>Результаты обучения</h1></div><div className="dashboard-actions"><button className="secondary-button" onClick={() => void loadJournal()}>{journalLoading ? 'Обновляем…' : 'Обновить'}</button><button className="logout-button" onClick={() => void signOutManager()}>Выйти</button></div></div><div className="stat-grid"><article><span>Всего попыток</span><b>{attempts.length}</b></article><article><span>Прошли с зачётом</span><b>{passRate}%</b></article><article><span>Средний результат</span><b>{averageScore}%</b></article></div><div className="attempt-table"><div className="attempt-table-head"><span>Сотрудник</span><span>Категория</span><span>Дата</span><span>Результат</span><span>Статус</span></div>{attempts.length === 0 ? <p className="empty-attempts">Пока нет попыток. Здесь появятся результаты после первого прохождения теста.</p> : attempts.map((attempt) => <div className="attempt-row" key={attempt.id}><b>{attempt.employeeName}</b><span>{attempt.categoryTitle}</span><span>{new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(attempt.completedAt))}</span><strong>{attempt.score} / {attempt.total}</strong><i className={attempt.passed ? 'status-pass' : 'status-repeat'}>{attempt.passed ? 'Зачёт' : 'Повторить'}</i></div>)}</div></section>}
+
+    {screen === 'myResults' && <section className="dashboard-view"><div className="dashboard-top"><div><button className="back-button" onClick={() => setScreen('categories')}>← К категориям</button><p className="eyebrow">ЛИЧНЫЙ РЕЗУЛЬТАТ</p><h1>Мои попытки</h1></div><button className="secondary-button" onClick={() => void loadMyResults()}>{journalLoading ? 'Обновляем…' : 'Обновить'}</button></div><div className="stat-grid"><article><span>Всего попыток</span><b>{attempts.length}</b></article><article><span>Зачётов</span><b>{attempts.filter((attempt) => attempt.passed).length}</b></article><article><span>Средний результат</span><b>{averageScore}%</b></article></div><div className="attempt-table"><div className="attempt-table-head personal-attempt-head"><span>Категория</span><span>Дата</span><span>Результат</span><span>Статус</span></div>{attempts.length === 0 ? <p className="empty-attempts">У вас пока нет сохранённых попыток.</p> : attempts.map((attempt) => <div className="attempt-row personal-attempt-row" key={attempt.id}><b>{attempt.categoryTitle}</b><span>{new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(attempt.completedAt))}</span><strong>{attempt.score} / {attempt.total}</strong><i className={attempt.passed ? 'status-pass' : 'status-repeat'}>{attempt.passed ? 'Зачёт' : 'Повторить'}</i></div>)}</div></section>}
 
     {screen === 'quiz' && activeCategory && questions[questionIndex] && <section className="quiz-view"><div className="quiz-topline"><button className="back-button" onClick={() => setScreen('categories')}>← К категориям</button><span>{activeCategory.title} · вопрос {questionIndex + 1} из {questions.length}</span></div><div className="progress-track" aria-label={`Выполнено ${questionIndex + 1} из ${questions.length}`}><i style={{ width: `${((questionIndex + 1) / questions.length) * 100}%` }} /></div><article className="question-card"><span className="question-number">{String(questionIndex + 1).padStart(2, '0')}</span><p className="question-kicker">ВЫБЕРИТЕ ОДИН ВАРИАНТ</p><h1>{questions[questionIndex].text}</h1><div className="answer-list">{questions[questionIndex].options.map((option, index) => <button key={option} className={`answer-option ${selected === index ? 'selected' : ''}`} onClick={() => setSelected(index)} aria-pressed={selected === index}><span>{String.fromCharCode(65 + index)}</span><p>{option}</p><i aria-hidden="true" /></button>)}</div><div className="question-actions"><span>{selected === null ? 'Выберите вариант ответа' : 'Ответ выбран'}</span><button className="primary-button" onClick={nextQuestion} disabled={selected === null}>{questionIndex + 1 === questions.length ? 'Завершить тест' : 'Следующий вопрос'} <b>→</b></button></div></article></section>}
 

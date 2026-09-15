@@ -1,4 +1,5 @@
 import { env } from 'cloudflare:workers';
+import { isManagerSession } from '../manager-auth';
 
 type AttemptRow = {
   id: number;
@@ -41,10 +42,15 @@ function toAttempt(row: AttemptRow) {
   };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   await ensureSchema();
-  const result = await env.DB.prepare(`SELECT id, employee_name, category_id, category_title, score, total, passed, completed_at
-    FROM attempts ORDER BY completed_at DESC LIMIT 100`).all<AttemptRow>();
+  const manager = await isManagerSession(request);
+  const employeeName = new URL(request.url).searchParams.get('employeeName')?.trim().slice(0, 120) ?? '';
+  if (!manager && !employeeName) return Response.json({ error: 'Требуется вход руководителя.' }, { status: 401 });
+  const query = `SELECT id, employee_name, category_id, category_title, score, total, passed, completed_at
+    FROM attempts ${manager ? '' : 'WHERE employee_name = ?'} ORDER BY completed_at DESC LIMIT 100`;
+  const statement = env.DB.prepare(query);
+  const result = manager ? await statement.all<AttemptRow>() : await statement.bind(employeeName).all<AttemptRow>();
   return Response.json({ attempts: result.results.map(toAttempt) });
 }
 
